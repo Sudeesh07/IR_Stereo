@@ -1,0 +1,109 @@
+# ------------------------------------------------------------------------
+# Training configuration for I-NAFSSR (InnovativeNAFSSR) model
+# ------------------------------------------------------------------------
+# general settings
+name: I-NAFSSR-x4
+model_type: ImageRestorationModel
+scale: 4
+num_gpu: 2  # Dual GPU training
+manual_seed: 10
+
+datasets:
+  train:
+    name: Flickr1024-sr-train
+    type: PairedStereoImageDataset
+    dataroot_gt: test/Flickr1024/hr
+    dataroot_lq: test/Flickr1024/lr_x4
+    io_backend:
+      type: disk
+
+    gt_size_h: 120
+    gt_size_w: 360
+    use_hflip: true
+    use_vflip: true
+    use_rot: false
+    flip_RGB: true
+
+    # data loader
+    use_shuffle: true
+    num_worker_per_gpu: 8  # Increased for dual GPU
+    batch_size_per_gpu: 8  # Increased batch size per GPU
+    dataset_enlarge_ratio: 20  # Repeat dataset multiple times for training
+    prefetch_mode: ~
+
+  val:
+    name: Flickr1024-sr-val
+    type: PairedStereoImageDataset
+    dataroot_gt: test/Flickr1024/hr
+    dataroot_lq: test/Flickr1024/lr_x4
+    io_backend:
+      type: disk
+
+# network structures
+network_g:
+  type: InnovativeNAFSSR
+  up_scale: 4
+  width: 64
+  num_recursive_steps: 5
+  drop_out_rate: 0.0
+  train_size: [1, 6, 30, 90]
+  fast_imp: true
+
+# path
+path:
+  pretrain_network_g: ~
+  strict_load_g: true
+  resume_state: ~
+
+# training settings
+train:
+  optim_g:
+    type: AdamW
+    lr: !!float 2e-3  # Increased learning rate for dual GPU training
+    weight_decay: !!float 1e-4
+    betas: [0.9, 0.999]
+
+  scheduler:
+    type: TrueCosineAnnealingLR
+    T_max: 100000  # Increased training iterations for dual GPU
+    eta_min: !!float 1e-7
+
+  total_iter: 100000
+  warmup_iter: 2000  # Longer warmup for recursive model
+  mixup: false
+
+  # losses
+  pixel_opt:
+    type: MSELoss
+    loss_weight: 1.0
+    reduction: mean
+
+# validation settings
+val:
+  val_freq: !!float 2e3  # Validate every 2000 iterations
+  save_img: true
+  trans_num: 1
+
+  max_minibatch: 1
+
+  metrics:
+    psnr: # metric name, can be arbitrary
+      type: calculate_psnr
+      crop_border: 0
+      test_y_channel: false
+    ssim:
+      type: calculate_skimage_ssim
+
+# logging settings
+logger:
+  print_freq: 500  # Print frequency for dual GPU training
+  save_checkpoint_freq: !!float 5e3  # Save checkpoint every 5000 iterations
+  use_tb_logger: true
+  wandb:
+    project: I-NAFSSR-Training
+    resume_id: ~
+
+# dist training settings
+dist_params:
+  backend: nccl
+  port: 29500
